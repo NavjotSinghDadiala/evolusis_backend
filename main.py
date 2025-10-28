@@ -4,17 +4,6 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 from collections import deque
-import io
-import base64
-import tempfile
-from elevenlabs import ElevenLabs
-
-from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.openapi.utils import get_openapi
-from fastapi.responses import HTMLResponse
-
-
-
 load_dotenv()
 
 import google.generativeai as genai
@@ -22,6 +11,7 @@ from agent.weather import *           # importing everything from weather.py
 from agent.news import *              # importing everything from news.py
 from loguru import logger
 import time
+import json
 
 logger.add("agent.log", rotation="5 MB", retention="7 days")
 
@@ -54,8 +44,7 @@ else:
 
 app = FastAPI(title="AI Agent with Gemini + Weather + News")
 
-# Short-term memory: Store last 5 queries with timestamps
-memory = deque(maxlen=5)
+memory = deque(maxlen=10)
 
 class QueryRequest(BaseModel):
     query: str
@@ -76,7 +65,7 @@ def get_memory_context() -> str:
     return context
 
 
-# ---------------------------------------------- LLM COMBINE -----------------------------------------------------------------
+# ---------------------------------------------- LLM COMBINE ----------------------------------------------------
 
 
 def ask_llm_for_combined_answer(query: str, factual_text: str | None, info_type: str = "general") -> str:
@@ -112,7 +101,128 @@ Please provide a clear answer (2 or 4 sentences). If the user refers to somethin
         return "Sorry, I could not generate a complete answer right now."
 
 
-# ----------------------------------------------------------------- ROUTES -----------------------------------------------------------------
+# -------------------- Planner and Executor helpers --------------------------------------
+def generate_plan_from_llm(query: str, memory_context: str, timeout: int = 12) -> dict | None:
+    planner_prompt = f"""
+You are an agent planner. Output ONLY valid JSON with the following shape:
+{{
+  "plan": [
+    {{"action": "fetch_weather", "params": {{"city": "<city>"}}}},
+    {{"action": "fetch_news", "params": {{"topic": "<topic>"}}}},
+    {{"action": "reply", "params": {{"tone": "short"}}}}
+  ],
+  "explain": "short human readable explanation"
+}}
+
+Allowed actions: fetch_weather(city), fetch_news(topic), reply()
+Use the memory below to help pick actions. Fill params (city/topic) when needed.
+
+Memory:
+{memory_context}
+
+Current user query: "{query}"
+
+Produce only valid JSON. Do not output any other text.
+"""
+    try:
+        resp = model.generate_content(planner_prompt, request_options={"timeout": timeout})
+        text = (resp.text or "").strip()
+        try:
+            plan = json.loads(text)
+            if isinstance(plan, dict) and "plan" in plan:
+                return plan
+        except Exception:
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1:
+                try:
+                    plan = json.loads(text[start:end+1])
+                    if isinstance(plan, dict) and "plan" in plan:
+                        return plan
+                except Exception:
+                    logger.warning("Planner produced non-JSON output")
+        return None
+    except Exception:
+        logger.exception("Planner LLM error")
+        return None
+
+#-----Execute actions in the plan .. It collects factual outputs and then asks the LLM to craft a reply.
+def execute_plan(plan: dict, query: str) -> dict:
+    actions = plan.get("plan", []) if isinstance(plan, dict) else []
+    observations = []
+    info_type = "general"
+    used_apis = set()
+
+    for step in actions:
+        if not isinstance(step, dict):
+            continue
+        action = step.get("action")
+        params = step.get("params") or {}
+
+        if action == "fetch_weather":
+            city = params.get("city")
+            if not city:
+                observations.append("fetch_weather skipped: no city provided.")
+                continue
+            logger.info(f"Executor: fetching weather for {city}")
+            res = fetch_weather(city)
+            if res.get("ok"):
+                observations.append(res.get("text"))
+                info_type = "weather"
+                used_apis.add("weather")
+            else:
+                observations.append(f"weather error: {res.get('error')}")
+
+        elif action == "fetch_news":
+            topic = params.get("topic")
+            if not topic:
+                observations.append("fetch_news skipped: no topic provided.")
+                continue
+            logger.info(f"Executor: fetching news for {topic}")
+            res = fetch_news(topic)
+            if res.get("ok"):
+                observations.append(res.get("text"))
+                if info_type != "weather":
+                    info_type = "news"
+                used_apis.add("news")
+            else:
+                observations.append(f"news error: {res.get('error')}")
+
+        elif action == "reply":
+            factual_text = "\n".join(observations) if observations else None
+            logger.info("Executor: finalizing reply via LLM")
+            answer = ask_llm_for_combined_answer(query, factual_text, info_type=info_type)
+# build reasoning
+            if used_apis:
+                reasoning_parts = []
+                if "weather" in used_apis:
+                    reasoning_parts.append("Weather API")
+                if "news" in used_apis:
+                    reasoning_parts.append("News API")
+                reasoning = "Used: " + ", ".join(reasoning_parts)
+            else:
+                reasoning = "general"
+            return {"ok": True, "answer": answer, "reasoning": reasoning, "details": {"observations": observations}}
+
+        else:
+            observations.append(f"unknown action: {action}")
+
+    factual_text = "\n".join(observations) if observations else None
+    answer = ask_llm_for_combined_answer(query, factual_text, info_type=info_type)
+    if used_apis:
+        reasoning_parts = []
+        if "weather" in used_apis:
+            reasoning_parts.append("Weather API")
+        if "news" in used_apis:
+            reasoning_parts.append("News API")
+        reasoning = "Used: " + ", ".join(reasoning_parts)
+    else:
+        reasoning = "general"
+    return {"ok": True, "answer": answer, "reasoning": reasoning, "details": {"observations": observations}}
+
+
+
+# ------------------------------ ROUTES --------------------------------------------------------
 
 @app.post("/ask")
 async def ask(req: QueryRequest):
@@ -127,6 +237,32 @@ async def ask(req: QueryRequest):
     t0 = time.time()
 
     try:
+        memory_context = get_memory_context()
+        plan = generate_plan_from_llm(query, memory_context)
+        if plan:
+            logger.info("Planner returned a valid plan, executing...")
+            exec_result = execute_plan(plan, query)
+            logger.info(f"Executed plan in {time.time()-t0:.2f}s")
+            # classify final reasoning: general vs api-triggered
+            plan_reasoning = exec_result.get("reasoning", "general")
+            apis = []
+            if isinstance(plan_reasoning, str) and plan_reasoning.startswith("Used:"):
+                # extract API names
+                used = plan_reasoning.split("Used:", 1)[1].strip()
+                for part in [p.strip() for p in used.split(",") if p.strip()]:
+                    if part.lower().startswith("weather"):
+                        apis.append("weather")
+                    elif part.lower().startswith("news"):
+                        apis.append("news")
+                    else:
+                        apis.append(part)
+                classification = "fetched via external api"
+            else:
+                classification = "general LLM used ie Gemini"
+            return {"reasoning": classification, "apis": apis, "answer": exec_result.get("answer"), "details": exec_result.get("details")}
+
+# Fallback if it doesnt understands 
+        logger.info("Planner failed or returned invalid output — falling back to previous reactive behavior")
 # --- WEATHER PART ----------------------
         if any(word in q_lower for word in ("weather", "temperature", "rain", "snow", "forecast")):
             reasoning = "Detected weather-related query. Fetching weather data..."
@@ -151,9 +287,9 @@ async def ask(req: QueryRequest):
                 answer = ask_llm_for_combined_answer(query, weather["error"], info_type="weather")
 
             logger.info(f"Processed weather query in {time.time()-t0:.2f}s | city={city}")
-            return {"reasoning": reasoning, "answer": answer}
+            return {"reasoning": "api", "apis": ["weather"], "answer": answer}
 
-# --- NEWS PART ----------------------
+        # --- NEWS PART ----------------------
         elif any(word in q_lower for word in ("news", "headline", "update", "report")):
             reasoning = "Detected news-related query. Fetching news articles..."
             logger.info(f"News intent detected for query: '{query}'")
@@ -170,9 +306,9 @@ async def ask(req: QueryRequest):
                 answer = ask_llm_for_combined_answer(query, news["error"], info_type="news")
 
             logger.info(f"Processed news query in {time.time()-t0:.2f}s | topic={topic}")
-            return {"reasoning": reasoning, "answer": answer}
+            return {"reasoning": "api", "apis": ["news"], "answer": answer}
 
-# --- GENERAL PART -----------
+        # --- GENERAL PART -----------
         else:
             reasoning = "Detected general question. Responding via Gemini."
             logger.info(f"General intent detected for query: '{query}'")
@@ -188,7 +324,7 @@ Please answer the user's question. IMPORTANT: If the user is referring to someth
             resp = model.generate_content(prompt, request_options={"timeout": 12})
             answer = (resp.text or "").strip()
             logger.info(f"Processed general query in {time.time()-t0:.2f}s")
-            return {"reasoning": reasoning, "answer": answer}
+            return {"reasoning": "general", "apis": [], "answer": answer}
 
     except Exception as e:
         logger.exception("Unhandled error in /ask")

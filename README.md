@@ -1,4 +1,4 @@
-## AI Agent — concise guide
+## AI Agent 
 
 Table of Contents
 - Features
@@ -7,12 +7,11 @@ Table of Contents
 - Running the Application
 - API Endpoints and why
 - Usage (examples)
-- Screenshots
 - Demo Video
 
 Features
 - Simple chat endpoint that answers general, news, and weather questions.
-- Short-term memory: remembers the last 5 queries to keep context.
+- Short-term memory: remembers the last 10 queries to keep context.
 - Uses live data for weather and news when needed.
 
 How my solution works
@@ -29,7 +28,7 @@ Tech Stack
 - loguru (logging)
 
 Running the Application
-1. Create and activate a virtual env (PowerShell):
+1. Create and activate a virtual env :
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -39,7 +38,7 @@ python -m venv .venv
 pip install -r requirements.txt
 uvicorn main:app --reload
 ```
-Server runs at: http://127.0.0.1:8000
+Server runs at: http://127.0.0.1:8000/docs
 
 Environment variables (required)
 - `GEMINI_API_KEY` — Google Generative AI key
@@ -66,7 +65,7 @@ curl -X POST http://127.0.0.1:8000/memory/clear
 ```
 
 Demo Video
-- Add a short demo video file or a YouTube link here. Example: `docs/demo.mp4` or `https://youtu.be/your-demo-link`.
+- https://www.loom.com/share/dfee246fd59d4c7cb95d657feb73beea
 
 Notes
 - Use Python version between 3.10 or 3.12

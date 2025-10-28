@@ -15,7 +15,6 @@ An intelligent conversational agent built with **FastAPI** and **Google Gemini**
 - [API Endpoints](#api-endpoints)
 - [Usage Examples](#usage-examples)
 - [Demo Video](#demo-video)
--
 
 ---
 

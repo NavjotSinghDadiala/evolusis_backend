@@ -15,7 +15,7 @@ An intelligent conversational agent built with **FastAPI** and **Google Gemini**
 - [API Endpoints](#api-endpoints)
 - [Usage Examples](#usage-examples)
 - [Demo Video](#demo-video)
-- [Notes](#notes)
+-
 
 ---
 
@@ -33,7 +33,6 @@ It uses short-term memory to maintain context and respond naturally in multi-tur
 - ☁️ Fetches real-time data using **OpenWeatherMap** and **NewsAPI**.
 - 🧵 Maintains **short-term memory** (last 10 queries).
 - 💬 Generates natural, context-aware, human-like answers.
-- 🧾 Simple REST API interface via `/docs` (Swagger UI).
 
 ---
 
@@ -196,10 +195,9 @@ curl -X POST http://127.0.0.1:8000/memory/clear
 
 ---
 
-## 📝 Notes
+## 📝 IMPS
 - Use Python 3.10 – 3.12.
 - Make sure the `.env` file is properly configured.
-- Works best with a stable internet connection (APIs are live).
 
 The `/ask` endpoint automatically determines whether to:
 
@@ -207,13 +205,4 @@ The `/ask` endpoint automatically determines whether to:
 - Call News API
 - Or answer directly using Gemini.
 
----
 
-## 🧾 Summary
-This project demonstrates how an AI Agent can:
-
-- Think using Gemini’s reasoning power
-- Decide what APIs to call
-- Act by fetching real-time data
-
-It’s a step toward building intelligent, self-planning, API-integrated AI systems that go beyond simple chatbots — blending live data with reasoning.

@@ -22,10 +22,10 @@ How my solution works
 
 Tech Stack
 - Python 3.10+
-- FastAPI (web framework)
-- Uvicorn (ASGI server)
+- FastAPI 
+- Uvicorn 
 - google-generativeai (Gemini LLM)
-- requests (HTTP calls to external APIs)
+- requests (HTTP calls to External APIs)
 - loguru (logging)
 
 Running the Application
@@ -65,16 +65,11 @@ curl http://127.0.0.1:8000/memory
 curl -X POST http://127.0.0.1:8000/memory/clear
 ```
 
-Screenshots
-- Add screenshots to this repo in a `screenshots/` folder and refer to them here. Example: `screenshots/ask-response.png`.
-
 Demo Video
 - Add a short demo video file or a YouTube link here. Example: `docs/demo.mp4` or `https://youtu.be/your-demo-link`.
 
 Notes
-- Use Python 3.10 or newer.
+- Use Python version between 3.10 or 3.12
 - Make sure the required API keys are set in your environment or `.env`.
-- Logs are written to `agent.log`.
 
-If you want, I can also add example screenshots, a short demo script, or basic pytest tests next.
 

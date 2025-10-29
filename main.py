@@ -1,11 +1,11 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, File, UploadFile, Response
 from fastapi.responses import StreamingResponse , FileResponse
 from pydantic import BaseModel
-from dotenv import load_dotenv
 import os
 from collections import deque
-load_dotenv()
-
 import google.generativeai as genai
 from agent.weather import *           # importing everything from weather.py        
 from agent.news import *              # importing everything from news.py

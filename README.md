@@ -2,6 +2,8 @@
 
 An intelligent conversational agent built with **FastAPI** and **Google Gemini**, capable of understanding queries, **planning its next steps**, and **using external APIs** (Weather + News) to provide real-time, human-like responses.
 
+### Project live at - 
+Visit: https://evolusis-backend.onrender.com/docs
 ---
 
 ## 🧭 Table of Contents
@@ -74,6 +76,15 @@ POST /ask
   "query": "What's the weather in Paris today?"
 }
 ```
+
+or 
+
+```json
+POST /ask
+{
+  "query": "What's the weather in Paris today?"
+}
+```
 The backend:
 
 - Adds the query to memory.
@@ -88,6 +99,18 @@ Returns:
   "reasoning": "Used: Weather API",
   "apis": ["weather"],
   "answer": "The weather in Paris is sunny with a high of 21°C today."
+}
+```
+or 
+
+```json
+{
+  "reasoning": "general LLM used ie Gemini",
+  "apis": [],
+  "answer": "Based on our recent conversation, we primarily discussed **Paris** and **Thane**. You asked about the weather and news in Paris several times, and also inquired about the weather in Thane.",
+  "details": {
+    "observations": []
+  }
 }
 ```
 
@@ -150,9 +173,6 @@ NEWS_API_KEY=your_newsapi_key_here
 ```bash
 uvicorn main:app --reload
 ```
-
-### 6. Open Swagger UI
-Visit: http://127.0.0.1:8000/docs
 
 ---
 
